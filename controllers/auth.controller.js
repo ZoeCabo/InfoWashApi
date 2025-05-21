@@ -67,6 +67,7 @@ exports.login = async (req, res, next) => {
 
     // Check if email and password exist
     if (!email || !password) {
+      //s i uno o los dos tan mal devuelve un mesnaje de error de estado con un json con informacion de estado y mensaje de error
       return res.status(400).json({
         status: 'fail',
         message: 'Please provide email and password'

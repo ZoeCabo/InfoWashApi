@@ -9,8 +9,8 @@ router
   .post(clothingController.createClothing);
 
 router
-  .route('/batch-laundry-instructions')
-  .post(clothingController.getBatchLaundryInstructions);
+  .route('/laundry')
+  .post(clothingController.laundryInstructions);
 
 router
   .route('/:id')

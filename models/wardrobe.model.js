@@ -11,11 +11,11 @@ const wardrobeSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
-    owner: {
-      type: String,
-      trim: true,
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
     },
-    // Reference to clothing items in this wardrobe
     clothes: [
       {
         type: mongoose.Schema.Types.ObjectId,

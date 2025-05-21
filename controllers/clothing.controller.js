@@ -2,7 +2,7 @@ const Clothing = require('../models/clothing.model');
 const Wardrobe = require('../models/wardrobe.model');
 
 // Get batch laundry instructions for multiple clothing items
-exports.getBatchLaundryInstructions = async (req, res) => {
+exports.laundryInstructions = async (req, res) => {
   try {
     if (!req.body.clothingIds || !Array.isArray(req.body.clothingIds)) {
       return res.status(400).json({
@@ -11,8 +11,15 @@ exports.getBatchLaundryInstructions = async (req, res) => {
       });
     }
 
-    const clothes = await Clothing.find({ _id: { $in: req.body.clothingIds } })
-      .populate('characteristics');
+    // Find user's wardrobes
+    const userWardrobes = await Wardrobe.find({ user: req.user.id });
+    const userWardrobeIds = userWardrobes.map(w => w._id);
+
+    // Find clothes that belong to user's wardrobes and match the requested IDs
+    const clothes = await Clothing.find({ 
+      _id: { $in: req.body.clothingIds },
+      wardrobe: { $in: userWardrobeIds }
+    }).populate('characteristics');
 
     if (clothes.length === 0) {
       return res.status(404).json({
@@ -87,10 +94,22 @@ exports.getBatchLaundryInstructions = async (req, res) => {
 // Get all clothing items
 exports.getAllClothes = async (req, res) => {
   try {
-    // Filter by wardrobe if provided
-    const filter = {};
+    // Find user's wardrobes
+    const userWardrobes = await Wardrobe.find({ user: req.user.id });
+    const userWardrobeIds = userWardrobes.map(w => w._id);
+    
+    // Filter by wardrobe if provided, ensuring it's one of the user's wardrobes
+    const filter = { wardrobe: { $in: userWardrobeIds } };
     if (req.query.wardrobe) {
-      filter.wardrobe = req.query.wardrobe;
+      // Verify the requested wardrobe belongs to the user
+      if (userWardrobeIds.includes(req.query.wardrobe)) {
+        filter.wardrobe = req.query.wardrobe;
+      } else {
+        return res.status(403).json({
+          status: 'fail',
+          message: 'You do not have access to this wardrobe',
+        });
+      }
     }
 
     const clothes = await Clothing.find(filter)
@@ -117,7 +136,14 @@ exports.getAllClothes = async (req, res) => {
 // Get a single clothing item
 exports.getClothing = async (req, res) => {
   try {
-    const clothing = await Clothing.findById(req.params.id)
+    // Find user's wardrobes
+    const userWardrobes = await Wardrobe.find({ user: req.user.id });
+    const userWardrobeIds = userWardrobes.map(w => w._id);
+    
+    const clothing = await Clothing.findOne({
+      _id: req.params.id,
+      wardrobe: { $in: userWardrobeIds }
+    })
       .populate('wardrobe')
       .populate('type')
       .populate('subtype')
@@ -126,7 +152,7 @@ exports.getClothing = async (req, res) => {
     if (!clothing) {
       return res.status(404).json({
         status: 'fail',
-        message: 'Clothing item not found',
+        message: 'Clothing item not found or you do not have permission',
       });
     }
 
@@ -147,6 +173,19 @@ exports.getClothing = async (req, res) => {
 // Create a new clothing item
 exports.createClothing = async (req, res) => {
   try {
+    // Verify the wardrobe belongs to the user
+    const wardrobe = await Wardrobe.findOne({ 
+      _id: req.body.wardrobe,
+      user: req.user.id
+    });
+    
+    if (!wardrobe) {
+      return res.status(403).json({
+        status: 'fail',
+        message: 'You do not have permission to add clothing to this wardrobe',
+      });
+    }
+    
     const newClothing = await Clothing.create(req.body);
 
     // Add this clothing to the wardrobe's clothes array
@@ -156,7 +195,7 @@ exports.createClothing = async (req, res) => {
       { new: true }
     );
 
-    res.status(200).json({
+    res.status(201).json({
       status: 'success',
       data: {
         clothing: newClothing,
@@ -173,15 +212,42 @@ exports.createClothing = async (req, res) => {
 // Update a clothing item
 exports.updateClothing = async (req, res) => {
   try {
-    const clothing = await Clothing.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
-    });
+    // Find user's wardrobes
+    const userWardrobes = await Wardrobe.find({ user: req.user.id });
+    const userWardrobeIds = userWardrobes.map(w => w._id);
+    
+    // If wardrobe is being changed, verify the new wardrobe belongs to the user
+    if (req.body.wardrobe) {
+      const newWardrobe = await Wardrobe.findOne({ 
+        _id: req.body.wardrobe,
+        user: req.user.id
+      });
+      
+      if (!newWardrobe) {
+        return res.status(403).json({
+          status: 'fail',
+          message: 'You do not have permission to move clothing to this wardrobe',
+        });
+      }
+    }
+    
+    // Find and update the clothing item
+    const clothing = await Clothing.findOneAndUpdate(
+      { 
+        _id: req.params.id,
+        wardrobe: { $in: userWardrobeIds }
+      }, 
+      req.body, 
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
 
     if (!clothing) {
       return res.status(404).json({
         status: 'fail',
-        message: 'Clothing item not found',
+        message: 'Clothing item not found or you do not have permission',
       });
     }
 
@@ -202,20 +268,27 @@ exports.updateClothing = async (req, res) => {
 // Delete a clothing item
 exports.deleteClothing = async (req, res) => {
   try {
-    const clothing = await Clothing.findById(req.params.id);
+    // Find user's wardrobes
+    const userWardrobes = await Wardrobe.find({ user: req.user.id });
+    const userWardrobeIds = userWardrobes.map(w => w._id);
+    
+    // Find the clothing item
+    const clothing = await Clothing.findOne({ 
+      _id: req.params.id,
+      wardrobe: { $in: userWardrobeIds }
+    });
 
     if (!clothing) {
       return res.status(404).json({
         status: 'fail',
-        message: 'Clothing item not found',
+        message: 'Clothing item not found or you do not have permission',
       });
     }
 
-    // Remove this clothing from the wardrobe's clothes array
+    // Remove the clothing from its wardrobe
     await Wardrobe.findByIdAndUpdate(
       clothing.wardrobe,
-      { $pull: { clothes: clothing._id } },
-      { new: true }
+      { $pull: { clothes: clothing._id } }
     );
 
     // Delete the clothing item

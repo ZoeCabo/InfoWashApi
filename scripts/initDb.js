@@ -19,6 +19,7 @@ const Subtype = require(path.join(__dirname, '../models/subtype.model'));
 const Characteristic = require(path.join(__dirname, '../models/characteristic.model'));
 const Wardrobe = require(path.join(__dirname, '../models/wardrobe.model'));
 const Clothing = require(path.join(__dirname, '../models/clothing.model'));
+const User = require(path.join(__dirname, '../models/user.model')); // Add this line
 
 // Connect to MongoDB
 mongoose
@@ -70,6 +71,7 @@ async function clearCollections() {
   await Characteristic.deleteMany({});
   await Wardrobe.deleteMany({});
   await Clothing.deleteMany({});
+  await User.deleteMany({}); // Add this line
 }
 
 async function createTypes() {
@@ -272,30 +274,96 @@ async function createCharacteristics() {
   return characteristics;
 }
 
-async function createWardrobes() {
+async function createUsers() {
+  console.log('Creating sample users...');
+  
+  const userData = [
+    {
+      name: 'John Doe',
+      email: 'john@example.com',
+      password: 'password123',
+      role: 'user'
+    },
+    {
+      name: 'Jane Smith',
+      email: 'jane@example.com',
+      password: 'password123',
+      role: 'user'
+    },
+    {
+      name: 'Admin User',
+      email: 'admin@example.com',
+      password: 'adminpass123',
+      role: 'admin'
+    }
+  ];
+  
+  const users = await User.insertMany(userData);
+  console.log(`Created ${users.length} users`);
+  return users;
+}
+
+async function createWardrobes(users) {
   console.log('Creating sample wardrobes...');
+  
+  // Create a map for easier lookup
+  const userMap = users.reduce((map, user) => {
+    map[user.name] = user._id;
+    return map;
+  }, {});
   
   const wardrobeData = [
     {
       name: 'Everyday Wardrobe',
       description: 'Regular clothes for daily wear',
-      owner: 'John Doe'
+      user: userMap['John Doe']
     },
     {
       name: 'Work Attire',
       description: 'Professional clothing for the office',
-      owner: 'Jane Smith'
+      user: userMap['Jane Smith']
     },
     {
       name: 'Seasonal',
       description: 'Clothes for specific seasons',
-      owner: 'John Doe'
+      user: userMap['John Doe']
     }
   ];
   
   const wardrobes = await Wardrobe.insertMany(wardrobeData);
   console.log(`Created ${wardrobes.length} wardrobes`);
   return wardrobes;
+}
+
+async function initializeDatabase() {
+  try {
+    // Clear existing data
+    await clearCollections();
+    
+    // Create users
+    const users = await createUsers();
+    
+    // Create clothing types
+    const types = await createTypes();
+    
+    // Create subtypes for each type
+    const subtypes = await createSubtypes(types);
+    
+    // Create care characteristics
+    const characteristics = await createCharacteristics();
+    
+    // Create sample wardrobes with user associations
+    const wardrobes = await createWardrobes(users);
+    
+    // Create sample clothing items
+    await createClothingItems(wardrobes, types, subtypes, characteristics);
+    
+    console.log('Database initialized successfully!');
+    process.exit(0);
+  } catch (error) {
+    console.error('Error initializing database:', error);
+    process.exit(1);
+  }
 }
 
 async function createClothingItems(wardrobes, types, subtypes, characteristics) {
